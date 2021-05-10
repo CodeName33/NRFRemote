@@ -1,9 +1,13 @@
+//*
 #include "RF24.h"
 #include "printf.h"
 
-uint8_t channel = 3;
-uint8_t RemoteAddress[] = { 131, 191, 48, 222 }; //{ 65, 223, 152, 111 };
-const uint64_t PipeAddress = 0xAA;
+//Uncomment this to find your remote code
+//#define FIND_ADDRESS_MODE
+//#define DISPLAY_CODES_MODE
+uint8_t channel = 3; //Your channel
+uint8_t RemoteAddress[] = { 131, 191, 48, 222 }; //Your device asddress
+const uint64_t PipeAddress = 0xAA; //0xAA on 0x55 (bit shift will be on one of them)
 const uint32_t ShortRepeat = 100;
 const uint32_t ShortRepeatFirst = 400;
 const uint32_t LongRepeat = 500;
@@ -233,6 +237,12 @@ bool IsLongRepeat(const String& Name)
 
 void printBytes()
 {
+#ifdef FIND_ADDRESS_MODE
+	PrintDec3(myBuffer, 32);
+	Serial.println();
+	return;
+#endif
+
 	static SRawSignal LastRS = {};
 
 	int RemoteAddressSize = sizeof(RemoteAddress);
@@ -243,9 +253,6 @@ void printBytes()
 			return;
 		}
 	}
-
-	//PrintDec3(myBuffer, 32);
-	//Serial.println();
 
 	SRawSignal RS = {};
 
@@ -262,7 +269,6 @@ void printBytes()
 	if (/*!LastRS.IsSameData(RS) &&*/ RS.IsValid())
 	{
 		LastRS = RS;
-			
 
 		SFoundInfo FI;
 		if (findSignal(RS.Data, RS.PCF_PayloadLength, FI))
@@ -289,15 +295,9 @@ void printBytes()
 				}
 			}
 		}
-
-		//PrintHex8(RS.Addr, sizeof(RS.Addr));
 		
-		/*
-		//else
+#ifdef DISPLAY_CODES_MODE
 		{
-			//Serial.print(" Addr (HEX): ");
-			//PrintHex8(RS.Addr, sizeof(RS.Addr));
-
 			Serial.print(" Addr: ");
 			print3(RS.Addr[sizeof(RS.Addr) - 1]);
 
@@ -320,17 +320,17 @@ void printBytes()
 			Serial.println();
 			
 			{
-				//Serial.print("{");
+				Serial.print("{");
 				for (int i = 0; i < MaxSignalData; i++)
 				{
-					//Serial.print(i >= RS.PCF_PayloadLength ? 255 : RS.Data[i]);
-					//Serial.print(", ");
+					Serial.print(i >= RS.PCF_PayloadLength ? 255 : RS.Data[i]);
+					Serial.print(", ");
 				}
-				//Serial.print("\"\" },");
-				//Serial.println();
+				Serial.print("\"\" },");
+				Serial.println();
 			}
 		}
-		//*/
+#endif
 	}
 }
 
@@ -391,3 +391,148 @@ void loop()
 		}
 	}
 }
+//*/
+/*
+#include "printf.h"
+#include "RF24.h"
+
+RF24 myRF24(7, 8);
+uint8_t chan = 0;
+const uint8_t num_samples = 100;
+const uint8_t threshold = 5;
+
+void setup(void)
+{
+    Serial.begin(115200);
+    printf_begin();
+
+    myRF24.begin();
+    myRF24.disableCRC();
+    myRF24.setAutoAck(false);
+    myRF24.setDataRate(RF24_2MBPS);
+    myRF24.printDetails();
+
+    Serial.println("OK.");
+}
+
+void loop(void)
+{
+
+	byte in;
+	if (Serial.available() > 0) {
+		in = Serial.read();
+		if (in == 'w')
+		{
+			chan += 1;
+			Serial.print("\nSet chan: ");
+			Serial.println(chan);
+		}
+		if (in == 's')
+		{
+			chan -= 1;
+			Serial.print("\nSet chan: ");
+			Serial.println(chan);
+		}
+	}
+
+	int count = 0;
+	myRF24.setChannel(chan);
+    for (int i = 0; i < num_samples * 10; i++)
+	{
+        myRF24.startListening();
+        delayMicroseconds(128);
+        myRF24.stopListening();
+
+        if (myRF24.testCarrier())
+		{
+			count++;
+        }
+    }
+
+	Serial.print("Channel: ");
+	Serial.print(chan);
+	Serial.print(" Count: ");
+	Serial.println(count);
+}
+//*/
+
+/*
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+#include <printf.h>
+
+#define CE_PIN  7 	/// Change it for your board
+#define CSN_PIN 8 	/// Change it for your board
+
+RF24 radio(CE_PIN, CSN_PIN);
+
+const char tohex[] = { '0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f' };
+uint64_t pipe = 0x0055;
+
+byte buff[32];
+byte chan = 0;
+byte len = 32;
+byte addr_len = 2;
+
+void set_nrf() {
+    radio.setDataRate(RF24_2MBPS);
+    radio.setCRCLength(RF24_CRC_DISABLED);
+    radio.setAddressWidth(addr_len);
+    radio.setPayloadSize(len);
+    radio.setChannel(chan);
+    radio.openReadingPipe(1, pipe);
+    radio.startListening();
+}
+
+void setup() {
+    Serial.begin(115200);
+    printf_begin();
+    radio.begin();
+    set_nrf();
+}
+
+long t1 = 0;
+long t2 = 0;
+long tr = 0;
+
+void loop() {
+    byte in;
+    if (Serial.available() > 0) {
+        in = Serial.read();
+        if (in == 'w') {
+            chan += 1;
+            radio.setChannel(chan);
+            Serial.print("\nSet chan: ");
+            Serial.print(chan);
+        }
+        if (in == 's') {
+            chan -= 1;
+            radio.setChannel(chan);
+            Serial.print("\nSet chan: ");
+            Serial.print(chan);
+        }
+        if (in == 'q') {
+            Serial.print("\n");
+            radio.printDetails();
+        }
+    }
+    while (radio.available()) {
+        t2 = t1;
+        t1 = micros();
+        tr += 1;
+        radio.read(&buff, sizeof(buff));
+        Serial.print("\n");
+        Serial.print(tr);
+        Serial.print("\tms: ");
+        Serial.print(millis());
+        Serial.print("\tCh: ");
+        Serial.print(chan);
+        Serial.print("\tGet data: ");
+        for (byte i = 0; i < len;i++) {
+            Serial.print(tohex[(byte)buff[i] >> 4]);
+            Serial.print(tohex[(byte)buff[i] & 0x0f]);
+        }
+    }
+}
+//*/
